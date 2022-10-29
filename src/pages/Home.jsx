@@ -1,48 +1,90 @@
 import React from 'react';
+import qs from 'qs';
 import { useSelector, useDispatch } from 'react-redux';
-import axios from 'axios';
+import { useNavigate } from 'react-router-dom';
 
-import { setCategoryId, setCurrentPage } from '../redux/slices/filterSilce';
+import { setCategoryId, setCurrentPage, setFilters } from '../redux/slices/filterSlice';
 import Categories from '../components/Categories';
-import Sort from '../components/Sort';
+import Sort, { sortList } from '../components/Sort';
 import PizzaBlock from '../components/PizzaBlock';
 import Skeleton from '../components/PizzaBlock/Skeleton';
 import Pagination from '../components/Pagination';
 import { SearchContext } from '../App';
+import { fetchPizzas } from '../redux/slices/pizzaSlice';
 
 const Home = () => {
+  const navigate = useNavigate();
   const dispatch = useDispatch();
-  const { categoryId, sort, currentPage} = useSelector((state) => state.filter);
+  const isSearch = React.useRef(false);
+  const isMounted = React.useRef(false);
+
+  const items = useSelector((state) => state.pizza.items);
+  const { categoryId, sort, currentPage } = useSelector((state) => state.filter);
+
   const { searchValue } = React.useContext(SearchContext);
-  const [items, setItems] = React.useState([]);
   const [isLoading, satIsLoading] = React.useState(true);
 
   const onChengeCategory = (id) => {
     dispatch(setCategoryId(id));
   };
 
-  const onChangePage = number => {
+  const onChangePage = (number) => {
     dispatch(setCurrentPage(number));
   };
 
-  React.useEffect(() => {
+  const getpizzas = async () => {
     satIsLoading(true);
 
-    const order = sort.sortProperty.includes('-') ? 'asc' : 'desc';
     const sortBy = sort.sortProperty.replace('-', '');
+    const order = sort.sortProperty.includes('-') ? 'asc' : 'desc';
     const category = categoryId > 0 ? `category=${categoryId}` : '';
     const search = searchValue ? `&search=${searchValue}` : '';
 
-
-    axios
-      .get(
-        `https://62b5c918da3017eabb229337.mockapi.io/pizzas?page=${currentPage}&limit=3&${category}&sortBy=${sortBy}&order=${order}${search}`,
-      )
-      .then((res) => {
-        setItems(res.data);
-        satIsLoading(false);
-      });
+    try {
+      dispatch(fetchPizzas({ sortBy, order, category, search, currentPage }));
+    } catch (error) {
+      console.log('ERROR', error);
+    } finally {
+      satIsLoading(false);
+    }
     window.scrollTo(0, 0);
+  };
+
+  React.useEffect(() => {
+    if (isMounted.current) {
+      const queryString = qs.stringify({
+        sortProperty: sort.sortProperty,
+        categoryId,
+        currentPage,
+      });
+
+      navigate(`?${queryString}`);
+    }
+    isMounted.current = true;
+  }, [categoryId, sort.sortProperty, currentPage]);
+
+  React.useEffect(() => {
+    if (window.location.search) {
+      const params = qs.parse(window.location.search.substring(1));
+
+      const sort = sortList.find((obj) => obj.sortProperty === params.sortProperty);
+
+      dispatch(
+        setFilters({
+          ...params,
+          sort,
+        }),
+      );
+      isSearch.current = true;
+    }
+  }, []);
+
+  React.useEffect(() => {
+    if (!isSearch.current) {
+      getpizzas();
+    }
+
+    isSearch.current = false;
   }, [categoryId, sort.sortProperty, searchValue, currentPage]);
 
   const pizzas = items.map((obj) => <PizzaBlock key={obj.id} {...obj} />);
